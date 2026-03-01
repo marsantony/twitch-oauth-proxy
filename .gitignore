@@ -1,3 +1,7 @@
 node_modules/
 .wrangler/
 .dev.vars
+
+# Claude Code
+.claude/
+.mcp.json
