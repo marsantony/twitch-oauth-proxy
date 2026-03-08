@@ -32,6 +32,14 @@ function createRequest(method, path, body, origin) {
   });
 }
 
+function createRawRequest(method, path, rawBody, origin) {
+  const url = 'https://twitch-oauth-proxy.workers.dev' + path;
+  const headers = new Headers();
+  headers.set('Origin', origin || 'https://marsantony.github.io');
+  if (rawBody) headers.set('Content-Type', 'application/json');
+  return new Request(url, { method, headers, body: rawBody });
+}
+
 // Mock global fetch for Twitch API calls
 let mockFetchResponses;
 
@@ -157,15 +165,7 @@ describe('Worker', () => {
 
     it('無效 JSON body 回傳 400', async () => {
       const env = createMockEnv();
-      const url = 'https://twitch-oauth-proxy.workers.dev/token';
-      const req = new Request(url, {
-        method: 'POST',
-        headers: {
-          'Origin': 'https://marsantony.github.io',
-          'Content-Type': 'application/json',
-        },
-        body: 'not-json',
-      });
+      const req = createRawRequest('POST', '/token', 'not-json');
       const res = await worker.fetch(req, env);
 
       expect(res.status).toBe(400);
@@ -267,6 +267,31 @@ describe('Worker', () => {
       expect(res.status).toBe(400);
     });
 
+    it('無效 JSON body 回傳 400', async () => {
+      const env = createMockEnv();
+      const req = createRawRequest('POST', '/refresh', 'not-json');
+      const res = await worker.fetch(req, env);
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe('Invalid JSON');
+    });
+
+    it('KV 資料損壞時回傳 500 並清除 session', async () => {
+      const kv = createMockKV();
+      const env = createMockEnv(kv);
+
+      kv._store.set('corrupted-session', 'not-valid-json{{{');
+
+      const req = createRequest('POST', '/refresh', { session_id: 'corrupted-session' });
+      const res = await worker.fetch(req, env);
+
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toContain('Corrupted session');
+      expect(kv.delete).toHaveBeenCalledWith('corrupted-session');
+    });
+
     it('Twitch refresh 失敗時刪除 session', async () => {
       const kv = createMockKV();
       const env = createMockEnv(kv);
@@ -315,6 +340,16 @@ describe('Worker', () => {
       const res = await worker.fetch(req, env);
 
       expect(res.status).toBe(400);
+    });
+
+    it('無效 JSON body 回傳 400', async () => {
+      const env = createMockEnv();
+      const req = createRawRequest('POST', '/logout', 'not-json');
+      const res = await worker.fetch(req, env);
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe('Invalid JSON');
     });
   });
 

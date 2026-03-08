@@ -127,7 +127,14 @@ async function handleRefresh(request, env) {
     return json({ error: 'Invalid session' }, 401, request);
   }
 
-  const { refresh_token, username } = JSON.parse(stored);
+  let storedData;
+  try {
+    storedData = JSON.parse(stored);
+  } catch {
+    await env.KV.delete(session_id);
+    return json({ error: 'Corrupted session' }, 500, request);
+  }
+  const { refresh_token, username } = storedData;
 
   // Refresh with Twitch
   const twitchRes = await fetch(TWITCH_TOKEN_URL, {
